@@ -1,0 +1,16 @@
+# Netlify／Cloudflare Pages 用的安全標頭（GitHub Pages 不讀這個檔，靠 index.html 裡的 <meta> CSP）
+# 注意：header 的 connect-src 是 'self'（Service Worker 要能抓站內檔案做離線快取）；
+#       頁面本身另有 <meta> CSP connect-src 'none'，兩者同時生效 → 頁面仍然完全不能連外。
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(), microphone=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+
+/sw.js
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache

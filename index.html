@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 安全政策：只允許載入站內檔案；connect-src 'none' = 頁面不能發出任何 fetch/XHR 網路請求 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#2b5cff">
+<title>圖片轉 PDF｜本地小工具</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>圖片轉 PDF</h1>
+  <div class="privacy" id="privacy">
+    <p>🔒 圖片只在你的瀏覽器裡處理，<b>不會上傳</b>。沒有後端、不呼叫外部服務、沒有廣告和追蹤碼，產出的 PDF 也不加浮水印。</p>
+    <details id="privacyHow">
+      <summary>怎麼確認真的沒上傳？</summary>
+      <ol>
+        <li><b>電腦</b>：按 F12（Mac：⌥⌘I）打開開發者工具 → 切到「Network／網路」分頁 → 選圖、產生 PDF，列表不會出現任何對外的連線。</li>
+        <li><b>手機或電腦都可以</b>：頁面打開後切成<b>飛航模式</b>或拔網路線，照樣能選圖、產生並下載 PDF。</li>
+        <li><b>技術細節</b>：頁面設定了安全規則（CSP <code>connect-src 'none'</code>），瀏覽器會直接擋掉這個頁面對外發出的任何資料請求。</li>
+      </ol>
+    </details>
+  </div>
+</header>
+
+<main>
+  <section class="pick">
+    <label class="btn primary" for="pickFiles">🖼️ 選擇圖片（可多選）</label>
+    <input id="pickFiles" type="file" accept="image/*" multiple hidden>
+    <label class="btn" for="pickCamera">📷 拍照</label>
+    <input id="pickCamera" type="file" accept="image/*" capture="environment" hidden>
+    <button class="btn ghost" id="clearAll" type="button" disabled>清空</button>
+  </section>
+
+  <div id="dropzone" class="dropzone">電腦：也可以把圖片直接拖進這個頁面的任何地方</div>
+  <div id="dropOverlay" class="drop-overlay" hidden><div>放開以加入圖片</div></div>
+  <div id="messages" class="messages" aria-live="polite"></div>
+
+  <ul id="list" class="list" aria-label="頁面順序（可拖曳排序）"></ul>
+  <p class="hint" id="countHint">尚未加入圖片</p>
+  <p class="warn" id="countWarn" hidden></p>
+
+  <section class="settings">
+    <label>頁面大小
+      <select id="pageSize">
+        <option value="a4" selected>A4</option>
+        <option value="fit">依圖片原比例</option>
+      </select>
+    </label>
+    <label>方向
+      <select id="orientation">
+        <option value="auto" selected>自動（依每張圖）</option>
+        <option value="portrait">直式</option>
+        <option value="landscape">橫式</option>
+      </select>
+    </label>
+    <label>邊距
+      <select id="margin">
+        <option value="none">無</option>
+        <option value="small" selected>小（10 mm）</option>
+      </select>
+    </label>
+    <label>畫質
+      <select id="quality">
+        <option value="standard" selected>標準（檔案較小）</option>
+        <option value="high">高（較清楚、檔案較大）</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="filename">
+    <label for="fileName">檔名</label>
+    <div class="fn-row"><input id="fileName" type="text" inputmode="text" autocomplete="off" maxlength="80" placeholder=""><span>.pdf</span></div>
+    <small class="hint">留空就用日期時間當檔名。</small>
+  </section>
+
+  <section class="actions">
+    <button class="btn primary big" id="makePdf" type="button" disabled>⬇️ 產生並下載 PDF</button>
+    <p id="status" class="status" aria-live="polite"></p>
+  </section>
+</main>
+
+<footer>
+  <small>開源函式庫：pdf-lib（MIT）、SortableJS（MIT），授權全文見 <a href="licenses/index.html">licenses/</a> 與 README。</small>
+</footer>
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/Sortable.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
