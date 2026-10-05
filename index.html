@@ -6,14 +6,17 @@
 <!-- 安全政策：只允許載入站內檔案；connect-src 'none' = 頁面不能發出任何 fetch/XHR 網路請求 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
+<!-- 版本號：與 app.js 的 APP_VERSION、sw.js 的 VERSION、下方各檔案的 ?v= 必須一致（用 tools/bump_version.py 一次改完） -->
+<meta name="app-version" content="2.2">
 <meta name="theme-color" content="#2b5cff">
 <title>圖片轉 PDF｜本地小工具</title>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest?v=2.2">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2.2">
 </head>
 <body>
+<div id="versionBanner" class="vbanner" role="alert" hidden></div>
 <header>
   <h1>圖片轉 PDF</h1>
   <div class="privacy" id="privacy">
@@ -48,32 +51,32 @@
 
   <section class="settings">
     <label>頁面大小
-      <select id="pageSize">
+      <select id="pageSize" autocomplete="off">
         <option value="a4" selected>A4</option>
         <option value="fit">依圖片原比例</option>
       </select>
     </label>
     <label>方向
-      <select id="orientation">
+      <select id="orientation" autocomplete="off">
         <option value="auto" selected>自動（依每張圖）</option>
         <option value="portrait">直式</option>
         <option value="landscape">橫式</option>
       </select>
     </label>
     <label>邊距
-      <select id="margin">
+      <select id="margin" autocomplete="off">
         <option value="none" selected>無（貼齊紙緣）</option>
         <option value="small">小（10 mm）</option>
       </select>
     </label>
     <label>圖片擺放
-      <select id="fit">
+      <select id="fit" autocomplete="off">
         <option value="cover" selected>填滿頁面</option>
         <option value="contain">完整顯示</option>
       </select>
     </label>
     <label>畫質
-      <select id="quality">
+      <select id="quality" autocomplete="off">
         <option value="standard" selected>標準（檔案較小）</option>
         <option value="high">高（較清楚、檔案較大）</option>
       </select>
@@ -95,10 +98,11 @@
 
 <footer>
   <small>開源函式庫：pdf-lib（MIT）、SortableJS（MIT），授權全文見 <a href="licenses/index.html">licenses/</a> 與 README。</small>
+  <small class="ver" id="appVersion">版本 v2.2</small>
 </footer>
 
-<script src="vendor/pdf-lib.min.js"></script>
-<script src="vendor/Sortable.min.js"></script>
-<script src="app.js"></script>
+<script src="vendor/pdf-lib.min.js?v=2.2"></script>
+<script src="vendor/Sortable.min.js?v=2.2"></script>
+<script src="app.js?v=2.2"></script>
 </body>
 </html>

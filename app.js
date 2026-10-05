@@ -2,6 +2,39 @@
 (function () {
   'use strict';
 
+  // ---------- 版本一致性檢查 ----------
+  // 線上更新後，瀏覽器可能用「新 HTML ＋ 快取裡的舊 JS」（GitHub Pages 預設快取 10 分鐘），
+  // 舊 JS 看不懂新選項（例如「填滿頁面」）就會產出錯誤的 PDF。所以 HTML 和 JS 版本不同時一律不讓它產生 PDF。
+  var APP_VERSION = '2.2';
+  var metaV = (document.querySelector('meta[name="app-version"]') || {}).content || '(舊版頁面)';
+  var REQUIRED = ['pageSize', 'orientation', 'margin', 'fit', 'quality', 'fileName', 'makePdf', 'list', 'versionBanner', 'appVersion'];
+  var missing = REQUIRED.filter(function (id) { return !document.getElementById(id); });
+  function showBanner(text, btnText, onClick) {
+    var b = document.getElementById('versionBanner');
+    if (!b) { b = document.createElement('div'); b.id = 'versionBanner'; b.className = 'vbanner'; b.setAttribute('role', 'alert'); document.body.insertBefore(b, document.body.firstChild); }
+    b.textContent = text;
+    if (btnText) { var btn = document.createElement('button'); btn.type = 'button'; btn.textContent = btnText; btn.onclick = onClick; b.appendChild(btn); }
+    b.hidden = false;
+  }
+  function hardReload() { location.replace(location.pathname + '?r=' + Date.now()); }
+  if (metaV !== APP_VERSION || missing.length) {
+    var KEY = 'pdfTool.autoReload';
+    var tried = false; try { tried = sessionStorage.getItem(KEY) === metaV + '|' + APP_VERSION; } catch (e) {}
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }).catch(function () {});
+    var mb = document.getElementById('makePdf'); if (mb) mb.disabled = true;
+    if (!tried) {
+      try { sessionStorage.setItem(KEY, metaV + '|' + APP_VERSION); } catch (e) {}
+      showBanner('偵測到新舊版本混在一起（頁面 v' + metaV + '／程式 v' + APP_VERSION + '），正在重新載入最新版…');
+      setTimeout(hardReload, 300);
+    } else {
+      showBanner('版本不一致（頁面 v' + metaV + '／程式 v' + APP_VERSION + '），為避免產出錯誤的 PDF 已暫停。請關閉這個分頁後重新開啟；若仍出現，請清除這個網站的資料。', '重新整理', hardReload);
+    }
+    window.__pdfTool = { versionMismatch: true, page: metaV, js: APP_VERSION, missing: missing };
+    return;   // 不初始化任何功能
+  }
+  try { sessionStorage.removeItem('pdfTool.autoReload'); } catch (e) {}
+  if (/[?&]r=\d+/.test(location.search) && history.replaceState) history.replaceState(null, '', location.pathname);   // 清掉自動重新載入用的參數
+
   var A4 = { w: 595.28, h: 841.89 };          // A4，單位 pt（1/72 吋）
   var MARGIN_PT = { none: 0, small: 28.35 };   // 10 mm
   var QUALITY = {                              // 大圖先縮小，避免手機記憶體爆掉
@@ -342,12 +375,28 @@
     if (!busy) addFiles(e.dataTransfer.files);
   });
 
+  // 頁尾版本號：讓使用者確認自己用的是哪一版
+  function showVersion() {
+    var c = 'serviceWorker' in navigator && navigator.serviceWorker.controller;
+    $('appVersion').textContent = '版本 v' + APP_VERSION + (c ? '・可離線使用' : '');
+  }
+  showVersion();
+
   // 離線支援：只有 http(s)／localhost 才能註冊 Service Worker；用 file:// 直接開時略過（功能照常）
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    var hadController = !!navigator.serviceWorker.controller, refreshing = false;
     navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW 註冊失敗', e); });
+    // 新版 SW 接手（代表有新版本整套下載好了）：沒在用就自動重新整理；正在用就提示，不打斷
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      showVersion();
+      if (!hadController) { hadController = true; return; }   // 第一次安裝，不是更新
+      if (refreshing) return;
+      if (!items.length && !busy) { refreshing = true; location.reload(); }
+      else showBanner('新版本已下載好。', '重新整理套用', function () { location.reload(); });
+    });
   }
 
-  window.__pdfTool = { items: function () { return items; }, pageLayout: pageLayout, placement: placement, cleanName: cleanName, pickQuality: pickQuality };  // 供自動測試
+  window.__pdfTool = { version: APP_VERSION, items: function () { return items; }, pageLayout: pageLayout, placement: placement, cleanName: cleanName, pickQuality: pickQuality };  // 供自動測試
   refreshPlaceholder();
   render();
 })();
