@@ -62,8 +62,14 @@
     </label>
     <label>邊距
       <select id="margin">
-        <option value="none">無</option>
-        <option value="small" selected>小（10 mm）</option>
+        <option value="none" selected>無（貼齊紙緣）</option>
+        <option value="small">小（10 mm）</option>
+      </select>
+    </label>
+    <label>圖片擺放
+      <select id="fit">
+        <option value="cover" selected>填滿頁面</option>
+        <option value="contain">完整顯示</option>
       </select>
     </label>
     <label>畫質
@@ -72,6 +78,7 @@
         <option value="high">高（較清楚、檔案較大）</option>
       </select>
     </label>
+    <p class="hint fit-hint" id="fitHint">「填滿頁面」：照片鋪滿紙張、不變形，但會裁掉少許邊緣；想看到整張照片請選「完整顯示」（可能留白）。縮圖就是實際頁面的樣子。</p>
   </section>
 
   <section class="filename">

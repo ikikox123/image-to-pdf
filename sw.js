@@ -1,6 +1,6 @@
 /* 離線快取：只快取站內檔案，cache-first。
  * 改版時務必把 VERSION 改掉：瀏覽器發現 sw.js 內容變了才會安裝新版，並在 activate 時刪掉舊版快取。 */
-var VERSION = 'pdf-tool-v2';
+var VERSION = 'pdf-tool-v2.1';
 var FILES = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest',
   './vendor/pdf-lib.min.js', './vendor/Sortable.min.js',

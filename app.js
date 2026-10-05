@@ -52,13 +52,16 @@
   }
   function releaseCanvas(c) { c.width = 0; c.height = 0; }
 
-  // 把圖片（含旋轉）畫到 canvas，長邊不超過 maxEdge，透明處填白色
-  function renderToCanvas(img, rotation, maxEdge) {
+  // 把圖片（含旋轉）畫到 canvas，透明處填白色。
+  // crop：在「旋轉後」座標裡、置中裁切的寬高 {sw, sh}（填滿頁面用）；省略＝整張。
+  // 長邊以「裁切後區域」計算，不超過 maxEdge、不放大 → 只嵌入裁後的像素，解析度不浪費。
+  function renderToCanvas(img, rotation, maxEdge, crop) {
     var w = img.naturalWidth, h = img.naturalHeight;
     var swap = rotation % 180 !== 0;
     var rw = swap ? h : w, rh = swap ? w : h;
-    var scale = Math.min(1, maxEdge / Math.max(rw, rh));
-    var cw = Math.max(1, Math.round(rw * scale)), ch = Math.max(1, Math.round(rh * scale));
+    var sw = crop ? Math.min(rw, crop.sw) : rw, sh = crop ? Math.min(rh, crop.sh) : rh;
+    var scale = Math.min(1, maxEdge / Math.max(sw, sh));
+    var cw = Math.max(1, Math.round(sw * scale)), ch = Math.max(1, Math.round(sh * scale));
     var c = document.createElement('canvas');
     c.width = cw; c.height = ch;
     var ctx = c.getContext('2d');
@@ -66,10 +69,11 @@
     ctx.fillRect(0, 0, cw, ch);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+    // 裁切是置中的：把「整張旋轉後的圖」以同一比例畫在 canvas 中心，超出 canvas 的部分自然被裁掉
+    var k = cw / sw;
     ctx.translate(cw / 2, ch / 2);
     ctx.rotate(rotation * Math.PI / 180);
-    var dw = (swap ? ch : cw), dh = (swap ? cw : ch);
-    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    ctx.drawImage(img, -w * k / 2, -h * k / 2, w * k, h * k);
     return c;
   }
 
@@ -98,8 +102,9 @@
         var t = renderToCanvas(h.img, 0, THUMB_EDGE);
         var blob = await canvasToBlob(t, 0.7);
         releaseCanvas(t);
+        var th = await loadImage(blob);   // 小縮圖（長邊約 280px）常駐記憶體，用來畫頁面預覽
         items.push({ id: 'i' + (++seq), file: f, name: f.name || ('照片' + seq), rotation: 0,
-                     thumbUrl: URL.createObjectURL(blob), w: h.img.naturalWidth, h: h.img.naturalHeight });
+                     thumbUrl: th.url, thumbImg: th.img, w: h.img.naturalWidth, h: h.img.naturalHeight });
         ok++;
       } catch (e2) {
         msg('「' + f.name + '」處理失敗：' + e2.message);
@@ -112,22 +117,21 @@
 
   // ---------- 列表 ----------
   function render() {
+    var opt = readOpt();
     listEl.textContent = '';
     items.forEach(function (it, idx) {
       var li = document.createElement('li');
       li.className = 'item';
       li.dataset.id = it.id;
       li.innerHTML =
-        '<span class="no"></span><div class="thumb"><img alt=""></div><div class="name"></div>' +
+        '<span class="no"></span><div class="thumb"><canvas class="page-preview" role="img"></canvas></div><div class="name"></div>' +
         '<div class="tools">' +
         '<button type="button" data-act="left" title="往前" aria-label="往前">◀</button>' +
         '<button type="button" data-act="rot" title="旋轉 90°" aria-label="旋轉 90 度">⟳</button>' +
         '<button type="button" data-act="right" title="往後" aria-label="往後">▶</button>' +
         '<button type="button" data-act="del" class="del" title="刪除" aria-label="刪除">✕</button></div>';
       li.querySelector('.no').textContent = idx + 1;
-      var img = li.querySelector('img');
-      img.src = it.thumbUrl;
-      img.style.transform = 'rotate(' + it.rotation + 'deg)';
+      drawPreview(li.querySelector('canvas'), it, opt);
       li.querySelector('.name').textContent = it.name;
       listEl.appendChild(li);
     });
@@ -151,7 +155,7 @@
     if (i < 0) return;
     var act = btn.dataset.act;
     if (act === 'rot') items[i].rotation = (items[i].rotation + 90) % 360;
-    else if (act === 'del') { URL.revokeObjectURL(items[i].thumbUrl); items.splice(i, 1); }
+    else if (act === 'del') { URL.revokeObjectURL(items[i].thumbUrl); items[i].thumbImg.src = ''; items.splice(i, 1); }
     else if (act === 'left' && i > 0) items.splice(i - 1, 0, items.splice(i, 1)[0]);
     else if (act === 'right' && i < items.length - 1) items.splice(i + 1, 0, items.splice(i, 1)[0]);
     render();
@@ -168,7 +172,12 @@
     });
   }
 
-  // ---------- 產生 PDF ----------
+  // ---------- 版面計算（PDF 與縮圖預覽共用） ----------
+  function readOpt() {
+    return { pageSize: $('pageSize').value, orientation: $('orientation').value, margin: $('margin').value,
+             quality: $('quality').value, fit: $('fit').value };
+  }
+  // 「完整顯示」（contain）：整張圖縮進可用區域，可能留白
   function pageLayout(imgW, imgH, opt) {
     var m = MARGIN_PT[opt.margin] || 0, pw, ph;
     if (opt.pageSize === 'fit') {
@@ -182,8 +191,44 @@
     var bw = pw - 2 * m, bh = ph - 2 * m;
     var k = Math.min(bw / imgW, bh / imgH);
     var dw = imgW * k, dh = imgH * k;
-    return { pw: pw, ph: ph, x: (pw - dw) / 2, y: (ph - dh) / 2, w: dw, h: dh };
+    return { pw: pw, ph: ph, m: m, x: (pw - dw) / 2, y: (ph - dh) / 2, w: dw, h: dh };
   }
+  // rw/rh＝旋轉後圖片尺寸。回傳頁面大小、圖片在頁面上的位置（pt），以及要裁切的區域（旋轉後像素，置中）。
+  // 「填滿頁面」（cover）：保持比例鋪滿可用區域（邊距無＝整張紙），超出部分置中裁掉，不變形。
+  // 「依圖片原比例」頁面本來就跟圖片同比例，兩種擺放結果相同（滿版）。
+  function placement(rw, rh, opt) {
+    var L = pageLayout(rw, rh, opt);
+    if (opt.fit !== 'cover' || opt.pageSize === 'fit') {
+      if (opt.pageSize === 'fit') { L.x = L.m; L.y = L.m; L.w = L.pw - 2 * L.m; L.h = L.ph - 2 * L.m; }  // 消除浮點誤差，確保貼邊
+      return { pw: L.pw, ph: L.ph, x: L.x, y: L.y, w: L.w, h: L.h, crop: null };
+    }
+    var bw = L.pw - 2 * L.m, bh = L.ph - 2 * L.m, a = bw / bh, sw, sh;
+    if (rw / rh > a) { sh = rh; sw = rh * a; } else { sw = rw; sh = rw / a; }
+    return { pw: L.pw, ph: L.ph, x: L.m, y: L.m, w: bw, h: bh, crop: { sw: sw, sh: sh } };
+  }
+  function rotatedSize(w, h, rot) { return rot % 180 ? { w: h, h: w } : { w: w, h: h }; }
+
+  // 縮圖＝頁面預覽：白色紙張＋邊距＋實際裁切範圍
+  function drawPreview(cv, it, opt) {
+    var img = it.thumbImg, r = rotatedSize(img.naturalWidth, img.naturalHeight, it.rotation);
+    var P = placement(r.w, r.h, opt), box = 150, dpr = Math.min(2, window.devicePixelRatio || 1);
+    var s = box / Math.max(P.pw, P.ph), cw = Math.round(P.pw * s), ch = Math.round(P.ph * s);
+    cv.width = cw * dpr; cv.height = ch * dpr;   // 顯示大小交給 CSS（max-width/height，保持比例）
+    var ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+    var dx = P.x * s, dy = (P.ph - P.y - P.h) * s, dw = P.w * s, dh = P.h * s;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
+    var srcW = P.crop ? P.crop.sw : r.w, k = dw / srcW;
+    ctx.translate(dx + dw / 2, dy + dh / 2);
+    ctx.rotate(it.rotation * Math.PI / 180);
+    ctx.drawImage(img, -img.naturalWidth * k / 2, -img.naturalHeight * k / 2, img.naturalWidth * k, img.naturalHeight * k);
+    ctx.restore();
+    cv.setAttribute('aria-label', it.name + ' 的頁面預覽');
+  }
+
+  // ---------- 產生 PDF ----------
 
   // 記憶體保護：張數多時自動降畫質（不設人為張數上限）
   function pickQuality(choice, n) {
@@ -193,13 +238,17 @@
   }
 
   // 逐張處理：解碼 → 縮圖畫到 canvas → 壓成 JPEG → 立刻釋放圖片與 canvas，只留下 JPEG bytes
-  async function encodeItem(it, maxEdge, jpegQ) {
+  async function encodeItem(it, maxEdge, jpegQ, opt) {
     var h = await loadImage(it.file);
-    var c;
-    try { c = renderToCanvas(h.img, it.rotation, maxEdge); } finally { releaseImage(h); }
+    var c, P;
+    try {
+      var r = rotatedSize(h.img.naturalWidth, h.img.naturalHeight, it.rotation);
+      P = placement(r.w, r.h, opt);
+      c = renderToCanvas(h.img, it.rotation, maxEdge, P.crop);
+    } finally { releaseImage(h); }
     try {
       var blob = await canvasToBlob(c, jpegQ);
-      return { bytes: new Uint8Array(await blob.arrayBuffer()), w: c.width, h: c.height };
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), w: c.width, h: c.height, P: P };
     } finally { releaseCanvas(c); }
   }
 
@@ -214,15 +263,15 @@
     for (var i = 0; i < items.length; i++) {
       statusEl.textContent = '產生中 ' + (i + 1) + ' / ' + items.length + '…' + note;
       var it = items[i], enc;
-      try { enc = await encodeItem(it, q.maxEdge, q.jpeg); }
+      try { enc = await encodeItem(it, q.maxEdge, q.jpeg, opt); }
       catch (e) {
         // 多半是手機記憶體不足：縮更小再試一次
-        try { enc = await encodeItem(it, RETRY_EDGE, 0.7); }
+        try { enc = await encodeItem(it, RETRY_EDGE, 0.7, opt); }
         catch (e2) { throw new Error('第 ' + (i + 1) + ' 張（' + it.name + '）處理失敗'); }
       }
       var jpg = await doc.embedJpg(enc.bytes);
       enc.bytes = null;
-      var L = pageLayout(enc.w, enc.h, opt);
+      var L = enc.P;
       var page = doc.addPage([L.pw, L.ph]);
       page.drawImage(jpg, { x: L.x, y: L.y, width: L.w, height: L.h });
       await new Promise(function (r) { setTimeout(r, 0); });   // 讓出主執行緒：畫面不卡、GC 有機會回收
@@ -249,10 +298,7 @@
     setBusy(true);
     var t0 = performance.now();
     try {
-      var bytes = await buildPdf({
-        pageSize: $('pageSize').value, orientation: $('orientation').value,
-        margin: $('margin').value, quality: $('quality').value
-      });
+      var bytes = await buildPdf(readOpt());
       var blob = new Blob([bytes], { type: 'application/pdf' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
@@ -271,14 +317,16 @@
 
   // ---------- 其他 UI ----------
   function setBusy(b) { busy = b; document.body.classList.toggle('busy', b); $('makePdf').disabled = b || !items.length; $('clearAll').disabled = b || !items.length; }
-  function syncOrientation() { $('orientation').disabled = $('pageSize').value === 'fit'; }
+  function syncOrientation() { var f = $('pageSize').value === 'fit'; $('orientation').disabled = f; $('fit').disabled = f; }
   $('pageSize').addEventListener('change', syncOrientation); syncOrientation();
+  // 設定改了 → 縮圖預覽跟著更新
+  ['pageSize', 'orientation', 'margin', 'fit'].forEach(function (id) { $(id).addEventListener('change', render); });
 
   ['pickFiles', 'pickCamera'].forEach(function (id) {
     $(id).addEventListener('change', function (e) { addFiles(e.target.files).then(function () { e.target.value = ''; }); });
   });
   $('clearAll').addEventListener('click', function () {
-    items.forEach(function (it) { URL.revokeObjectURL(it.thumbUrl); });
+    items.forEach(function (it) { URL.revokeObjectURL(it.thumbUrl); it.thumbImg.src = ''; });
     items = []; clearMsg(); statusEl.textContent = ''; render();
   });
 
@@ -299,7 +347,7 @@
     navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW 註冊失敗', e); });
   }
 
-  window.__pdfTool = { items: function () { return items; }, pageLayout: pageLayout, cleanName: cleanName, pickQuality: pickQuality };  // 供自動測試
+  window.__pdfTool = { items: function () { return items; }, pageLayout: pageLayout, placement: placement, cleanName: cleanName, pickQuality: pickQuality };  // 供自動測試
   refreshPlaceholder();
   render();
 })();
